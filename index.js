@@ -902,4 +902,71 @@ console.log(`Version: ${config.server.version}`);
 console.log(`Auto-Reconnect: ${config.utils['auto-reconnect'] ? 'Enabled' : 'Disabled'}`);
 console.log('='.repeat(50));
 
-createBot();
+function createBot() {
+  if (bot) {
+    try {
+      bot.removeAllListeners();
+      bot.end();
+    } catch {}
+    bot = null;
+  }
+
+  console.log(`[Bot] Connecting to ${config.server.ip}:${config.server.port}`);
+
+  bot = mineflayer.createBot({
+    host: config.server.ip,
+    port: config.server.port,
+    username: config['bot-account'].username,
+    password: config['bot-account'].password || undefined,
+    auth: config['bot-account'].type,
+    version: config.server.version,
+    hideErrors: false
+  });
+
+  let spawned = false;
+
+  // ✅ SPAWN SUCCESS
+  bot.once('spawn', () => {
+    spawned = true;
+    botState.connected = true;
+    botState.reconnectAttempts = 0;
+
+    console.log('[Bot] ✅ Spawned successfully!');
+
+    // 🔐 AUTO LOGIN FIX (IMPORTANT)
+    if (config.utils['auto-auth'].enabled) {
+      const pass = config.utils['auto-auth'].password;
+      setTimeout(() => {
+        bot.chat(`/login ${pass}`);
+        bot.chat(`/register ${pass} ${pass}`);
+        console.log('[Auth] Sent login/register');
+      }, 2000);
+    }
+  });
+
+  // ❌ SPAWN TIMEOUT FIX (SHORTER + SMART)
+  setTimeout(() => {
+    if (!spawned) {
+      console.log('[Bot] ❌ Spawn timeout → reconnecting...');
+      bot.end();
+    }
+  }, 20000); // 20s instead of 60s
+
+  bot.on('end', () => {
+    botState.connected = false;
+    botState.reconnectAttempts++;
+
+    const delay = 3000;
+    console.log(`[Bot] Reconnecting in ${delay / 1000}s...`);
+
+    setTimeout(createBot, delay);
+  });
+
+  bot.on('kicked', (reason) => {
+    console.log('[Bot] Kicked:', reason);
+  });
+
+  bot.on('error', (err) => {
+    console.log('[Bot] Error:', err.message);
+  });
+}
